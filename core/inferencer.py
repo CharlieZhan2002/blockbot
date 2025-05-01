@@ -6,15 +6,16 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from core.fc import get_tool_response
 
 class Inferencer:
-    def __init__(self, model_config=None, tools=None):
+    def __init__(self, model_config=None, tools=None, thinking=False):
         """Initializes the model and tokenizer."""
-        self.default_model_name = "Qwen/Qwen2.5-0.5B-Instruct"
+        self.default_model_name = "Qwen/Qwen3-1.7B"
         self.model_config = model_config if model_config is not None else {}
         self.model_name = self.model_config.get("model_name", self.default_model_name)
         self.torch_dtype = self.model_config.get(
             "torch_dtype",
             torch.bfloat16 if torch.cuda.is_available() and torch.cuda.get_device_capability(0)[0] >= 8 else torch.float16
         )
+        self.thinking = thinking
         self.tools = tools if tools is not None else []
         self._tools = []
         for tool in self.tools:
@@ -83,6 +84,7 @@ class Inferencer:
                     add_generation_prompt=True,
                     return_tensors='pt',
                     tools=self._tools,
+                    enable_thinking=self.thinking,
                 ).to(self.model.device)
             except Exception as e:
                 print(f"Error applying chat template: {e}"); raise
