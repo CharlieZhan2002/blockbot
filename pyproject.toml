@@ -1,0 +1,11 @@
+[project]
+name = "blockbot"
+version = "0.1.0"
+description = "Blockchain chatbot with function calling & reasoning."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests>=2.32.3",
+    "torch>=2.7.0",
+    "transformers>=4.51.3",
+]
