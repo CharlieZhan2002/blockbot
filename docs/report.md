@@ -12,13 +12,13 @@ BlockBot (https://github.com/itdevwu/blockbot) is an innovative blockchain chatb
 
 ## 2. History of Natural Language Processing
 
-NLP has evolved quickly and significantly since the 1950s, transitioning from rule-based to statistics-based models and, most recently, neural network-based approaches. Some of the key milestones include:
+NLP has evolved significantly since the 1950s, transitioning from rule-based to statistical and, most recently, neural network-based approaches. Key milestones include:
 
-- **Raw NLP (1950s–1980s)**: Rule-based systems like ELIZA, using pattern matching for basic dialogue [1].
+- **Raw NLP (1950s–1980s)**: Rule-based systems like ELIZA used pattern matching for basic dialogue [1].
 - **Statistical NLP (1990s–2000s)**: Techniques like Hidden Markov Models and n-grams enabled probabilistic language modeling [2].
 - **Neural NLP (2010s–present)**: Recurrent Neural Networks (RNNs) and Long Short-Term Memory (LSTM) networks improved sequence modeling, followed by the transformative impact of Transformers in 2017 [3].
 
-Transformers, introduced by Vaswani et al., revolutionized NLP with their self-attention mechanism, enabling parallel processing and capturing long-range dependencies [3]. This laid the foundation for modern LLMs, which power advanced chatbots like BlockBot.
+Transformers, introduced by Vaswani et al., revolutionized NLP with their self-attention mechanism, enabling parallel processing and capturing long-range dependencies [3]. This laid the foundation for modern LLMs, including GPT, Gemini, Qwen, and DeepSeek, which power advanced chatbots like BlockBot.
 
 ## 3. Revolution of Large Language Models
 
@@ -29,7 +29,7 @@ LLMs have advanced through innovations in model architectures:
 - **Multi-Head Attention (MHA)**: Introduced in the Transformer, MHA allows models to focus on different parts of the input simultaneously, improving context understanding [3].
 - **Multi-Query Attention (MQA)**: Reduces memory usage by sharing key and value projections across heads, improving efficiency [4].
 - **Grouped-Query Attention (GQA)**: Balances MHA and MQA by grouping queries, optimizing performance for large-scale models [5].
-- **Mixture of Layered Attention (MLA)**: Combines different attention mechanisms across layers for enhanced flexibility [6].
+- **Multi-head Latent Attention (MLA)**: First introduced in DeepSeek-V2 and inherited by DeepSeek-V3 and DeepSeek-R1, MLA compresses the Key-Value cache into a latent vector, significantly reducing memory usage and enabling efficient inference for large-scale models [6].
 
 These architectures enable LLMs to process complex inputs efficiently, critical for BlockBot’s blockchain and math tasks.
 
@@ -40,8 +40,8 @@ Training LLMs involves sophisticated algorithms to optimize performance:
 - **Proximal Policy Optimization (PPO)**: A reinforcement learning (RL) algorithm used for fine-tuning LLMs, balancing exploration and exploitation [7].
 - **Direct Preference Optimization (DPO)**: Simplifies RL by directly optimizing human preferences, improving alignment [8].
 - **Simplified Preference Optimization (SimPO)**: Enhances DPO with fewer hyperparameters, increasing efficiency [9].
-- **Generalized Reward Preference Optimization (GRPO)**: Extends DPO for broader reward functions, improving robustness [10].
-- **Decentralized Adaptive Preference Optimization (DAPO)**: Adapts DPO for decentralized training, suitable for web3 applications [11].
+- **Group Relative Policy Optimization (GRPO)**: A training algorithm that enhances policy optimization by leveraging group relative preferences, improving the model's ability to handle diverse reward structures [10].
+- **Decoupled Clip and Dynamic sAmpling Policy Optimization (DAPO)**: An algorithm that decouples clipping and dynamically samples policies to improve optimization stability and efficiency [11].
 
 These algorithms enhance LLMs’ reasoning and alignment, enabling BlockBot’s natural language capabilities.
 
@@ -112,6 +112,14 @@ User --> (BlockBot)
 
 ### 5.1 Components
 
+<div align="center">
+
+![BlockBot Arch](./blockbot_arch.svg)
+
+Fig 1. Architecture of BlockBot
+
+</div>
+
 - **`main.py`**: Orchestrates the application, initializing Qwen 3 and coordinating module interactions.
 - **`core/inferencer.py`**: Manages inference, determining when to invoke function calls based on user input.
 - **`core/fc.py`**: Handles function call execution, routing requests to appropriate modules.
@@ -122,34 +130,58 @@ User --> (BlockBot)
 
 ### 6.1 Blockchain Function Calls
 
-The `llm_tools/eth.py` module enables blockchain interactions using the Web3.py library. Below is a sample implementation for querying an Ethereum account balance:
+The `llm_tools/eth.py` module enables blockchain interactions using Etherscan. Below is a sample implementation for querying an Ethereum account balance:
 
 ```python
-from web3 import Web3
+def get_eth_balance(address: str) -> float:
+    """
+    Get the ETH balance of an address
 
-def get_balance(address: str) -> float:
-    w3 = Web3(Web3.HTTPProvider('https://mainnet.infura.io/v3/YOUR_INFURA_KEY'))
-    if not w3.is_address(address):
-        raise ValueError("Invalid Ethereum address")
-    balance_wei = w3.eth.get_balance(address)
-    balance_eth = w3.from_wei(balance_wei, 'ether')
-    return float(balance_eth)
+    Args:
+        address (str): The address to query.
+    
+    Returns:
+        float: The balance of the address in ETH.
+    """
+    params = {
+        "module": "account",
+        "action": "balance",
+        "address": address,
+        "tag": "latest",
+        "apikey": API_KEY
+    }
+    response = requests.get(ETHERSCAN_API_URL, params=params).json()
+    if response["status"] != "1":
+        raise Exception(f"Error: {response['message']}")
+    return int(response["result"]) / 1e18
 ```
 
-This function allows BlockBot to respond to queries like “What is the balance of 0x123...?” by invoking `get_balance` and returning the result in natural language.
+This function allows BlockBot to respond to queries like “What is the balance of 0x123...?” by invoking `get_eth_balance()` and returning the result in natural language.
 
 ### 6.2 Math Function Calls
 
-The `llm_tools/math.py` module handles mathematical computations. Below is a sample implementation for calculating a percentage:
+The `llm_tools/math.py` module handles mathematical computations. Below is a sample implementation for calculating a math expression:
 
 ```python
-def calculate_percentage(value: float, percentage: float) -> float:
-    if percentage < 0 or percentage > 100:
-        raise ValueError("Percentage must be between 0 and 100")
-    return (value * percentage) / 100
+def calculate(expression: str) -> float:
+    """
+    Calculate a mathematical expression.
+
+    Args:
+        expression (str): The mathematical expression to calculate.
+
+    Returns:
+        float: The result of the calculation.
+    """
+    try:
+        # Evaluate the expression safely
+        result = eval(expression, {"__builtins__": None}, {})
+        return result
+    except Exception as e:
+        return f"Error in calculation: {str(e)}"
 ```
 
-This function supports queries like “What is 15% of 200?” by computing the result and integrating it into Qwen 3’s response.
+This function supports queries like “2+2*17.8+6/34” and returns the result.
 
 ### 6.3 Inference Flow
 
@@ -186,12 +218,12 @@ BlockBot leverages Qwen 3’s advanced reasoning and function calling to create 
 [3] A. Vaswani et al., “Attention is all you need,” in *Proc. NeurIPS*, 2017, pp. 5998–6008.  
 [4] N. Shazeer, “Multi-query attention for efficient transformer inference,” *arXiv preprint arXiv:1911.02150*, 2019.  
 [5] B. Ainslie et al., “GQA: Training generalized multi-query transformer models,” *arXiv preprint arXiv:2006.05236*, 2020.  
-[6] J. Yang et al., “Mixture of layered attention: Scaling transformer efficiency,” *arXiv preprint arXiv:2305.12345*, 2023.  
+[6] DeepSeek-AI, “DeepSeek-V2: A strong, economical, and efficient mixture-of-experts language model,” *arXiv preprint arXiv:2405.04434*, 2024.  
 [7] J. Schulman et al., “Proximal policy optimization algorithms,” *arXiv preprint arXiv:1707.06347*, 2017.  
 [8] R. Rafailov et al., “Direct preference optimization: Your language model is secretly a reward model,” *arXiv preprint arXiv:2305.18290*, 2023.  
 [9] Y. Chen et al., “SimPO: Simplified preference optimization for LLM alignment,” *arXiv preprint arXiv:2402.17463*, 2024.  
-[10] X. Liu et al., “Generalized reward preference optimization for robust LLM training,” *arXiv preprint arXiv:2403.17887*, 2024.  
-[11] Z. Wang et al., “DAPO: Decentralized adaptive preference optimization for web3 AI,” *arXiv preprint arXiv:2404.13721*, 2024.  
+[10] DeepSeek Team, “DeepSeekMath: Pushing the limits of mathematical reasoning in open language models,” *arXiv preprint arXiv:2402.03300*, 2024.  
+[11] ByteDance Research, “DAPO: Decoupled clip and dynamic sAmpling policy optimization for language models,” *arXiv preprint arXiv:2503.14476*, 2025.  
 [12] J. Wei et al., “Chain-of-thought prompting elicits reasoning in large language models,” in *Proc. NeurIPS*, 2022, pp. 24824–24837.  
 [13] S. Yao et al., “Tree of thoughts: Deliberate problem solving with large language models,” *arXiv preprint arXiv:2305.10683*, 2023.  
 [14] J. Bai et al., “Qwen: An autoregressive transformer with tool-use and code interpreter,” *arXiv preprint arXiv:2309.16609*, 2023.  
