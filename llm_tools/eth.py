@@ -1,8 +1,9 @@
 import os
+import json
 import requests
 
 ETHERSCAN_API_URL = "https://api.etherscan.io/api"
-API_KEY = os.getenv("API_KEY")
+API_KEY = "W2GBRSZRC7V7P37W6EA289GH8ES1WFVMHX"
 
 def get_eth_balance(address: str) -> float:
     """Get the ETH balance of an address"""
@@ -26,6 +27,85 @@ def wei_to_eth(wei_value: str) -> float:
 def eth_to_wei(eth_value: float) -> str:
     """Convert ETH to Wei"""
     return str(int(eth_value * 1e18))
+
+def get_bytecode_from_etherscan(address: str) -> str:
+    """Check if an address is a contract by getting its bytecode."""
+    params = {
+        "module": "proxy",
+        "action": "eth_getCode",
+        "address": address,
+        "tag": "latest",
+        "apikey": API_KEY
+    }
+    response = requests.get(ETHERSCAN_API_URL, params=params).json()
+    if "result" not in response:
+        raise Exception("Failed to retrieve bytecode.")
+    return response["result"]  # '0x' means it's not a contract
+
+
+def extract_source_code(source_code: str) -> str:
+    """提取并格式化合约源码，支持 Remix JSON 和普通合约字符串"""
+    source_code = source_code.strip()
+
+    if not source_code:
+        return "该地址未公开合约源码或未验证。"
+
+    # Remix 多文件 JSON 格式（字符串包裹的 JSON）
+    if source_code.startswith("{") and source_code.endswith("}"):
+        try:
+            parsed = json.loads(source_code)
+            if isinstance(parsed, dict) and "sources" in parsed:
+                code_blocks = []
+                for filename, fileinfo in parsed["sources"].items():
+                    code = fileinfo.get("content", "")
+                    code_blocks.append(f"// File: {filename}\n{code}")
+                return "\n\n".join(code_blocks)
+        except json.JSONDecodeError as e:
+            return f"JSON 解析失败，返回原始源码：\n\n{source_code}"
+
+    # 普通单文件 Solidity 合约
+    return source_code
+
+def analyze_contract_by_address(address: str) -> str:
+    """识别是否为合约地址，并返回源码"""
+
+    try:
+        # 1. 先判断该地址是否为合约（非 EOA）
+        bytecode = get_bytecode_from_etherscan(address)
+        if not bytecode or bytecode == "0x":
+            return f"❌ 地址 {address} 不是合约地址。"
+
+        # 2. 再尝试获取合约源码
+        url = "https://api.etherscan.io/api"
+        params = {
+            "module": "contract",
+            "action": "getsourcecode",
+            "address": address,
+            "apikey": API_KEY,
+        }
+
+        response = requests.get(url, params=params, timeout=10)
+        data = response.json()
+
+        if not isinstance(data, dict):
+            return "❌ API 响应格式错误。"
+
+        result = data.get("result")
+        if (
+            not result
+            or not isinstance(result, list)
+            or not isinstance(result[0], dict)
+            or not result[0].get("SourceCode")
+        ):
+            return f"✅ 地址 {address} 是合约地址，但未验证或无源码可用。"
+
+        raw_code = result[0]["SourceCode"]
+        source_code = extract_source_code(raw_code)
+
+        return f"✅ 地址 {address} 是合约地址：\n\n{source_code[:3000]}..."  # 限制输出长度
+
+    except Exception as e:
+        return f"⚠️ 获取合约源码失败：{str(e)}"
 
 
 def get_latest_transactions(address: str, limit: int = 10):
@@ -166,4 +246,25 @@ eth_tools = [
           },
           "function": get_eth_gas_price,
      },
+     {
+    "name": "analyze_contract_by_address",
+    "description": (
+        "Analyze whether a given Ethereum address is a smart contract address and retrieve its source code if verified. "
+        "Use this tool when the user asks whether an address is a contract, whether it's a proxy contract, what functions it has, "
+        "or if it is secure. If the address is not a contract, the tool will return a message indicating so. "
+        "If it is a contract, it will return the Solidity source code."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "string",
+                "description": "The Ethereum address to analyze. Must be a valid Ethereum address.",
+            }
+        },
+        "required": ["address"],
+    },
+    "function": analyze_contract_by_address,
+}
+
 ]

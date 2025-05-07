@@ -1,57 +1,62 @@
 import json
 import datetime
+from fastapi import FastAPI, HTTPException , Request
+from pydantic import BaseModel
+from typing import List, Dict
 
 from core.inferencer import Inferencer
-
 import llm_tools.math
 import llm_tools.eth
 
-try:
-    print("Initializing Inferencer...")
-    tools = []
-    tools.extend(llm_tools.math.math_tools)
-    tools.extend(llm_tools.eth.eth_tools)
+# 设置 API 密钥
+API_KEY = "123"
 
-    inferencer = Inferencer(
-        model_config={"model_name": "Qwen/Qwen3-1.7B"}, tools=tools, thinking=True
-    )
-    print("Inferencer initialized.")
+# 初始化 Inferencer
+print("Initializing Inferencer...")
+tools = []
+tools.extend(llm_tools.math.math_tools)
+tools.extend(llm_tools.eth.eth_tools)
 
-    messages = [
-        {
+inferencer = Inferencer(
+    model_config={"model_name": "Qwen/Qwen3-1.7B"},
+    tools=tools,
+    thinking=True
+)
+print("Inferencer initialized.")
+
+# FastAPI 应用
+app = FastAPI(
+    title="Custom Inferencer API",
+    description="Qwen3 + Tools for Open WebUI",
+    version="1.0.0"
+)
+
+# 输入数据结构
+class ChatInput(BaseModel):
+    messages: List[Dict[str, str]]
+    api_key: str
+
+# 推理接口：同时兼容 2 个路径
+@app.post("/infer")
+@app.post("/infer/chat/completions")
+async def infer_openai_compatible(request: Request):
+    body = await request.json()
+    messages = body.get("messages", [])
+    print("🔥 OpenAI-style messages:", messages)
+
+    if not messages:
+        raise HTTPException(status_code=400, detail="Missing messages")
+
+    if not any(msg["role"] == "system" for msg in messages):
+        messages.insert(0, {
             "role": "system",
-            "content": f"You are a helpful assistant with access to tools. Use the available tools when needed. Respond concisely. Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        }
-    ]
+            "content": f"You are a helpful assistant with tools. {datetime.datetime.now()}"
+        })
 
-    print("\n--- Start Conversation (type 'exit' to quit) ---")
+    response = inferencer.infer(messages)
+    return {"choices": [{"message": response[-1]}]}
 
-    while True:
-        user_input = input("User: ")
-        if user_input.lower() == "exit":
-            print("Exiting conversation.")
-            break
-
-        messages.append({"role": "user", "content": user_input})
-
-        try:
-            response_messages = inferencer.infer(messages)
-
-            messages = response_messages
-
-            print("\n--- Full Conversation History After Turn ---")
-            print(json.dumps(messages, indent=2, ensure_ascii=False))
-            print("\n--- Model Response ---")
-            print(messages[-1]["content"].replace("<|im_end|>", " "))
-            print("-" * 20) 
-
-        except Exception as e:
-            print(f"\nAn error occurred during inference: {e}")
-            if messages and messages[-1]["role"] == "user":
-                messages.pop()
-
-except Exception as e:
-    print(f"\nAn error occurred during initialization: {e}")
-    import traceback
-
-    traceback.print_exc()
+# 模型列表接口（无需密钥）
+@app.get("/infer/models")
+async def list_models():
+    return {"models": ["Qwen/Qwen3-1.7B"]}
