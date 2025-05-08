@@ -44,13 +44,13 @@ def get_bytecode_from_etherscan(address: str) -> str:
 
 
 def extract_source_code(source_code: str) -> str:
-    """提取并格式化合约源码，支持 Remix JSON 和普通合约字符串"""
+    """Extract and format the contract source code, supporting Remix JSON and ordinary contract strings"""
     source_code = source_code.strip()
 
     if not source_code:
-        return "该地址未公开合约源码或未验证。"
+        return "This address does not disclose the contract source code or has not been verified."
 
-    # Remix 多文件 JSON 格式（字符串包裹的 JSON）
+    # Remix multi-file JSON format (JSON wrapped in strings)
     if source_code.startswith("{") and source_code.endswith("}"):
         try:
             parsed = json.loads(source_code)
@@ -61,13 +61,13 @@ def extract_source_code(source_code: str) -> str:
                     code_blocks.append(f"// File: {filename}\n{code}")
                 return "\n\n".join(code_blocks)
         except json.JSONDecodeError as e:
-            return f"JSON 解析失败，返回原始源码：\n\n{source_code}"
+            return f"JSON parsing failed. Return the original source code:\n\n{source_code}"
 
     # 普通单文件 Solidity 合约
     return source_code
 
 def analyze_contract_by_address(address: str) -> str:
-    """识别是否为合约地址，并返回源码"""
+    """Identify whether it is a contract address and return the source code"""
 
     try:
         # 1. 先判断该地址是否为合约（非 EOA）
@@ -88,7 +88,7 @@ def analyze_contract_by_address(address: str) -> str:
         data = response.json()
 
         if not isinstance(data, dict):
-            return "❌ API 响应格式错误。"
+            return "❌ The API response format is incorrect."
 
         result = data.get("result")
         if (
@@ -97,15 +97,15 @@ def analyze_contract_by_address(address: str) -> str:
             or not isinstance(result[0], dict)
             or not result[0].get("SourceCode")
         ):
-            return f"✅ 地址 {address} 是合约地址，但未验证或无源码可用。"
+            return f"✅ Addresses {address} It is a contract address, but it has not been verified or there is no source code available."
 
         raw_code = result[0]["SourceCode"]
         source_code = extract_source_code(raw_code)
 
-        return f"✅ 地址 {address} 是合约地址：\n\n{source_code[:3000]}..."  # 限制输出长度
+        return f"✅ Addresses {address} isc ontract address：\n\n{source_code[:3000]}..."  # 限制输出长度
 
     except Exception as e:
-        return f"⚠️ 获取合约源码失败：{str(e)}"
+        return f"⚠️ Failed to obtain the contract source code:{str(e)}"
 
 
 def get_latest_transactions(address: str, limit: int = 10):
@@ -155,6 +155,20 @@ def get_eth_gas_price() -> float:
     if response["status"] != "1":
         raise Exception(f"Error: {response['message']}")
     return float(response["result"]["ProposeGasPrice"])
+
+# def search_online_blockchain_info(query: str) -> str:
+#     """Use search engines or third-party apis to retrieve answers to blockchain questions"""
+#     """Problems such as newly established blockchain companies or technologies（background knowledge）"""
+#     from serpapi import GoogleSearch  # 或其他搜索 API
+#     params = {
+#         "q": query,
+#         "api_key": "你的SerpAPI Key",  # 或者用 Bing/Web search API
+#         "num": 1
+#     }
+#     search = GoogleSearch(params)
+#     results = search.get_dict()
+#     snippet = results.get("organic_results", [{}])[0].get("snippet", "未找到结果")
+#     return snippet
 
 
 eth_tools = [
