@@ -56,7 +56,7 @@ class Inferencer:
              raise TypeError("Input 'messages' must be a list.")
 
         default_generation_args = {
-            "max_new_tokens": 512,
+            "max_new_tokens": 6000,
             "do_sample": True,
             "top_k": 20,
             "top_p": 0.8,
@@ -107,6 +107,7 @@ class Inferencer:
 
             assistant_response_message = {"role": "assistant", "content": response_text}
             current_messages.append(assistant_response_message)
+            current_messages.append(assistant_response_message)
 
             tool_call_pattern = r'<tool_call>(.*?)</tool_call>'
             match = re.search(tool_call_pattern, response_text, re.DOTALL)
@@ -124,10 +125,27 @@ class Inferencer:
                         print(f"[DEBUG] Executing tool: {tool_name} with arguments: {arguments}")
                         tool_response_content = get_tool_response(self.tools, tool_name, arguments)
                         print(f"[DEBUG] Tool response: {tool_response_content}")
-                        current_messages.append({"role": "tool", "content": tool_response_content, "name": tool_name})
+                        current_messages.append({
+                            "role": "tool",
+                            "content": tool_response_content,
+                            "name": tool_name,
+                            "function_call": {
+                                "name": tool_name,
+                                "arguments": arguments
+                            }
+                        })
                         print("[DEBUG] Tool executed. Looping for model's final response.")
                     else:
                         print("Warning: Malformed tool call data (missing name/arguments). Ending turn.")
+                        current_messages.append({
+                            "role": "tool",
+                            "content": "The function call failed, parameters were missing or there was no function call.",
+                            "name": tool_name or "unknown",
+                            "function_call": {
+                                "name": tool_name or "unknown",
+                                "arguments": arguments if arguments is not None else {}
+                            }
+                        })
                         break
 
                 except json.JSONDecodeError:

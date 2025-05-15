@@ -3,7 +3,7 @@ import datetime
 from fastapi import FastAPI, HTTPException , Request
 from pydantic import BaseModel
 from typing import List, Dict
-
+import re
 from core.inferencer import Inferencer
 import llm_tools.math
 import llm_tools.eth
@@ -54,7 +54,38 @@ async def infer_openai_compatible(request: Request):
         })
 
     response = inferencer.infer(messages)
-    return {"choices": [{"message": response[-1]}]}
+    last_msg = response[-1]
+
+    # 回溯本轮消息，找到最近一次 function_call
+    function_call_info = ""
+    for msg in reversed(response):
+        if "function_call" in msg and msg["function_call"]:
+            func_name = msg["function_call"].get("name", "")
+            args = msg["function_call"].get("arguments", {})
+            function_call_info = f"[This answer used Function Call: {func_name} Parameter: {json.dumps(args, ensure_ascii=False)}]"
+            break
+
+    # 提取思考和正式回答
+    content = last_msg.get("content") or ""
+    think_match = re.search(r"<think>(.*?)</think>", content, flags=re.DOTALL)
+    thinking = think_match.group(1).strip() if think_match else ""
+    # 去除 <think>...</think> 和 <|im_end|>
+    answer = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
+    answer = answer.replace("<|im_end|>", "").strip()
+
+    content = ""
+    if function_call_info:
+        content += function_call_info + "\n\n"
+    if thinking:
+        content += "💡Model thinking：\n" + thinking.strip() + "\n\n"
+    if answer:
+        content += "🤖Model answer:\n" + answer.strip()
+
+    last_msg = {
+        "role": "assistant",
+        "content": content.strip()
+    }
+    return {"choices": [{"message": last_msg}]}
 
 # 模型列表接口（无需密钥）
 @app.get("/infer/models")

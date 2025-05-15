@@ -1,6 +1,8 @@
 import os
 import json
 import requests
+from datetime import datetime, timezone
+import re
 
 ETHERSCAN_API_URL = "https://api.etherscan.io/api"
 API_KEY = "W2GBRSZRC7V7P37W6EA289GH8ES1WFVMHX"
@@ -156,6 +158,61 @@ def get_eth_gas_price() -> float:
         raise Exception(f"Error: {response['message']}")
     return float(response["result"]["ProposeGasPrice"])
 
+def clean_user_input(text: str) -> str:
+    """清理无意义词，如 '代币'、'币' 等，但保留英文主体"""
+    return re.sub(r"(币|coin|代币|加密货币)", "", text, flags=re.IGNORECASE).strip()
+
+def search_coin_id(query: str) -> str:
+    """调用 CoinGecko /search 接口获取 coin_id"""
+    try:
+        response = requests.get("https://api.coingecko.com/api/v3/search", params={"query": query}, timeout=10)
+        coins = response.json().get("coins", [])
+        if coins:
+            return coins[0]["id"]
+    except Exception:
+        pass
+    return None
+
+def get_crypto_price_and_history(user_input: str, vs_currency: str = "usd") -> dict:
+    try:
+        # 1. 用户输入清理
+        cleaned = clean_user_input(user_input)
+
+        # 2. 查找 Coin ID
+        coin_id = search_coin_id(cleaned)
+        if not coin_id:
+            return {"error": f"❌ 未找到币种：{user_input}"}
+
+        # 3. 查询价格
+        price_resp = requests.get("https://api.coingecko.com/api/v3/simple/price", params={
+            "ids": coin_id,
+            "vs_currencies": vs_currency
+        }, timeout=10).json()
+        current_price = price_resp.get(coin_id, {}).get(vs_currency)
+
+        # 4. 查询历史价格
+        hist_resp = requests.get(f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart", params={
+            "vs_currency": vs_currency,
+            "days": 7,
+        }, timeout=10).json()
+
+        history = [
+            {"time": datetime.fromtimestamp(ts / 1000, tz=timezone.utc).isoformat(), "price": round(p, 6)}
+            for ts, p in hist_resp.get("prices", [])
+        ]
+
+        return {
+            "cleaned_input": cleaned,
+            "coin_id": coin_id,
+            "vs_currency": vs_currency,
+            "current_price": current_price,
+            "history": history,
+            "has_history": bool(history)
+        }
+
+    except Exception as e:
+        return {"error": f"请求失败：{str(e)}"}
+
 
 eth_tools = [
     {
@@ -265,6 +322,31 @@ eth_tools = [
         "required": ["address"],
     },
     "function": analyze_contract_by_address,
+},
+    {
+    "name": "get_crypto_price_and_history",
+    "description": (
+        "本工具能获取加密货币的当前价格和过去7天的价格趋势（基于 CoinGecko）。"
+        "查询某个加密货币的实时价格与历史趋势，支持中英文币种名模糊匹配（如 '比特币', 'btc', '狗狗币', 'trump coin', 'Official Pepe'），"
+        "会自动匹配 CoinGecko 支持的加密货币 ID，并返回结构化数据供回答或绘图。"
+        "使用场景：当用户询问某个加密货币的价格、趋势、是否上涨、是否值得投资等问题时，调用此函数。"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "user_input": {
+                "type": "string",
+                "description": "用户输入的币种名或关键词（中英文或拼音，如 btc、eth、狗狗币、official pepe 等）"
+            },
+            "vs_currency": {
+                "type": "string",
+                "description": "用于计价的法币（如 usd、cny、eur 等），默认 usd",
+                "default": "usd"
+            }
+        },
+        "required": ["user_input"]
+    },
+    "function": get_crypto_price_and_history
 }
 
 ]
