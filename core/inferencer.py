@@ -56,7 +56,7 @@ class Inferencer:
              raise TypeError("Input 'messages' must be a list.")
 
         default_generation_args = {
-            "max_new_tokens": 6000,
+            "max_new_tokens": 5000,
             "do_sample": True,
             "top_k": 20,
             "top_p": 0.8,
@@ -107,7 +107,6 @@ class Inferencer:
 
             assistant_response_message = {"role": "assistant", "content": response_text}
             current_messages.append(assistant_response_message)
-            current_messages.append(assistant_response_message)
 
             tool_call_pattern = r'<tool_call>(.*?)</tool_call>'
             match = re.search(tool_call_pattern, response_text, re.DOTALL)
@@ -128,24 +127,21 @@ class Inferencer:
                         current_messages.append({
                             "role": "tool",
                             "content": tool_response_content,
-                            "name": tool_name,
-                            "function_call": {
-                                "name": tool_name,
-                                "arguments": arguments
-                            }
+                            "name": tool_name
                         })
-                        print("[DEBUG] Tool executed. Looping for model's final response.")
+                        print("[DEBUG] Tool executed. Asking model to continue answering.")
+
+                        # 插入一条提示，引导模型继续
+                        current_messages.append({
+    "role": "user",
+    "content": (
+        f"The tool `{tool_name}` has responded with the following data:\n\n"
+        f"{tool_response_content}\n\n"
+        "Please summarize this result and continue your answer for the user."
+    )
+})
                     else:
                         print("Warning: Malformed tool call data (missing name/arguments). Ending turn.")
-                        current_messages.append({
-                            "role": "tool",
-                            "content": "The function call failed, parameters were missing or there was no function call.",
-                            "name": tool_name or "unknown",
-                            "function_call": {
-                                "name": tool_name or "unknown",
-                                "arguments": arguments if arguments is not None else {}
-                            }
-                        })
                         break
 
                 except json.JSONDecodeError:
@@ -157,7 +153,46 @@ class Inferencer:
 
             else:
                 print("[DEBUG] No tool call found in response. Ending turn.")
+
+                # 检查是否有工具调用历史
+                tool_messages = [m for m in current_messages if m["role"] == "tool"]
+                last_tool = tool_messages[-1] if tool_messages else None
+
+                # 尝试提取 <think> 内容
+                think_match = re.search(r"<think>(.*?)</think>", response_text, re.DOTALL)
+                final_answer = re.sub(r"<think>.*?</think>", "", response_text, flags=re.DOTALL).strip()
+
+                # 构造 Header
+                header = ""
+                if last_tool:
+                    # 查找对应的参数（根据 tool_name 匹配调用）
+                    try:
+                        tool_name = last_tool.get("name", "unknown")
+                        for m in current_messages:
+                            if m.get("role") == "assistant":
+                                m_match = re.search(r'"name"\s*:\s*"{}"'.format(re.escape(tool_name)), m["content"])
+                                if m_match:
+                                    args_match = re.search(r'"arguments"\s*:\s*({.*?})', m["content"])
+                                    if args_match:
+                                        args_json = json.loads(args_match.group(1))
+                                        args_str = json.dumps(args_json, ensure_ascii=False)
+                                        break
+                                    else:
+                                        args_str = "{}"
+                                else:
+                                    args_str = "{}"
+                    except Exception:
+                        args_str = "{}"
+
+                    header += f"[This answer used Function Call: {tool_name} Parameter: {args_str}]\n\n"
+
+                if think_match:
+                    header += "💡Model thinking：\n" + think_match.group(1).strip() + "\n\n"
+
+                header += "🤖Model answer：\n" + final_answer
+
+                # 替换最终 assistant 消息
+                current_messages[-1] = {"role": "assistant", "content": header.strip()}
                 break
 
-        # Return the full conversation history including the final response
         return current_messages
